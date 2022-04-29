@@ -22,8 +22,13 @@
 #include "RC_Control.h"
 #include "Camera.h"
 
+#include "driver/gpio.h"
+#include "driver/uart.h"
+
 #define ESP_WIFI_CHANNEL 1
 #define ESP_MAX_STA_CONN 2
+
+#define BUF_SIZE 1024
 
 #define LOG "WIFI"
 
@@ -34,7 +39,8 @@ static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 
 /* Empty handle to esp_http_server */
 static httpd_handle_t server = NULL;
-static httpd_handle_t server81 = NULL;
+
+static QueueHandle_t uart2_queue;
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -92,12 +98,31 @@ int Com_init()
 		}
 	}
 
+
 #ifdef DEBUG
 	if (ret_val == 0) ESP_LOGI(LOG, "Wifi Init successful!");
 	else ESP_LOGE(LOG, "Wifi Init failed!");
 #endif
 
 	return ret_val;
+}
+
+void rf433_init()
+{
+	uart_config_t uart_config = {
+	        .baud_rate = 2400,
+	        .data_bits = UART_DATA_8_BITS,
+	        .parity    = UART_PARITY_DISABLE,
+	        .stop_bits = UART_STOP_BITS_1,
+	        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+	};
+
+
+    if(uart_param_config(UART_NUM_2, &uart_config))
+    	ESP_LOGE(LOG,"PARAM Failed");
+    uart_set_pin(UART_NUM_2, 0, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(UART_NUM_2, BUF_SIZE*2, 0, 0, NULL, 0);
+
 }
 
 int Com_stop()
@@ -122,6 +147,27 @@ int Com_stop()
 	return ret_val;
 }
 
+/* RF433 related
+ *
+ */
+void Com_rf433_receive(void* pvParameter)
+{
+    uart_event_t event;
+    size_t* buffered_size;
+    uint8_t* data = (uint8_t*) malloc(32+1);
+
+	while(1)
+	{
+		const int rxBytes = uart_read_bytes(UART_NUM_2, data, 32, 1000 / portTICK_RATE_MS);
+		if ( rxBytes > 0 )
+		{
+			data[rxBytes] = 0;
+			ESP_LOGI(LOG, "Read %d bytes: '%s'", rxBytes, data);
+			ESP_LOG_BUFFER_HEXDUMP(LOG, data, rxBytes, ESP_LOG_INFO);
+		}
+	}
+	free(data);
+}
 
 
 int get_main(httpd_req_t *req)
@@ -265,6 +311,65 @@ int get_streaming(httpd_req_t *req)
 	return res;
 }
 
+int get_joyControl(httpd_req_t *req)
+{
+	size_t qur_len;
+	char *qur;
+
+	char control[2];
+
+	httpd_resp_send_chunk(req, Phone_JoyControl_Html, strlen(Phone_JoyControl_Html));
+	httpd_resp_send_chunk(req, NULL, 0);
+
+	qur_len = httpd_req_get_url_query_len(req) + 1;
+#ifdef DEBUG
+			ESP_LOGI(LOG, "QUR_len : %d", qur_len);
+#endif
+	if (qur_len >1)
+	{
+		qur = malloc(qur_len);
+		if (httpd_req_get_url_query_str(req, qur, qur_len) == ESP_OK)
+		{
+#ifdef DEBUG
+			ESP_LOGI(LOG, "QUR : %s", qur);
+#endif
+   			if ( httpd_query_key_value(qur, "ACC", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_joy_motor(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "ACC : %d", charToInt(control,1));
+#endif
+   			}
+
+   			if ( httpd_query_key_value(qur, "BRK", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_joy_brake(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "BRK : %d", charToInt(control,1));
+#endif
+   			}
+
+   			if ( httpd_query_key_value(qur, "STR", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_joy_steering(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "STR : %d", charToInt(control,1));
+#endif
+   			}
+
+   			if ( httpd_query_key_value(qur, "GER", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_joy_gear(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "GER : %d", charToInt(control,1));
+#endif
+   			}
+		}
+	}
+
+	return 0;
+}
+
 /*
  * HTTP URI
  */
@@ -303,6 +408,13 @@ httpd_uri_t uri_streaming = {
 		.user_ctx = NULL
 };
 
+httpd_uri_t uri_joyControl = {
+		.uri	= "/joyControl",
+		.method = HTTP_GET,
+		.handler = get_joyControl,
+		.user_ctx = NULL
+};
+
 
 /*
  * WEB Server main part
@@ -310,6 +422,9 @@ httpd_uri_t uri_streaming = {
 int Com_server_uri()
 {
 	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+	config.max_open_sockets = 4;
+	config.max_uri_handlers = 6;
 
 	int ret_val = 0;
 
@@ -319,6 +434,7 @@ int Com_server_uri()
 		httpd_register_uri_handler(server, &uri_phone);
 		httpd_register_uri_handler(server, &uri_vrkey);
 		httpd_register_uri_handler(server, &uri_vrjoy);
+		httpd_register_uri_handler(server, &uri_joyControl);
 		ret_val = 1;
 	}
 
@@ -329,27 +445,6 @@ int Com_server_uri()
 		httpd_register_uri_handler(server, &uri_streaming);
 	}
 
-#ifdef DEBUG
-	ESP_LOGI(LOG, "start_control_server : %d", ret_val);
-#endif
-
-	return ret_val;
-}
-
-int Com_server_uri_stream()
-{
-	int ret_val = 0;
-
-	httpd_config_t config81 = HTTPD_DEFAULT_CONFIG();
-
-	config81.server_port = 81;
-	config81.ctrl_port = 32769;
-
-	if ( httpd_start(&server81, &config81) == ESP_OK )
-	{
-		httpd_register_uri_handler(server, &uri_streaming);
-		ret_val = 1;
-	}
 #ifdef DEBUG
 	ESP_LOGI(LOG, "start_control_server : %d", ret_val);
 #endif
@@ -383,6 +478,8 @@ void Com_start_server()
 
 	}
 }
+
+
 
 /*
  * Query handler helper functions

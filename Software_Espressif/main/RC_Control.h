@@ -23,4 +23,12 @@ void set_value_steering(int val);
 void set_value_motor(int val);
 void set_value_rotation(int val);
 
+int control_brake(int val_motor);
+
+//Joy stick
+void set_value_joy_motor(int val);
+void set_value_joy_brake(int val);
+void set_value_joy_steering(int val);
+void set_value_joy_gear(int val);
+
 #endif /* MAIN_RC_CONTROL_H_ */

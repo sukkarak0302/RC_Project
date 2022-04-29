@@ -38,12 +38,18 @@
 #define SERVO_MAX_PULSEWIDTH_US 2000 //Maximum pulse width in microsecond
 #define SERVO_MAX_DEGREE 180 //Maximum angle in degree upto which servo can rotate
 
+#define MAX_DRV 4
+
 static int value_steering = 5;
 static int value_motor = 5;
 static int value_rotation;
+static int value_brake = 0;
+static int value_forward = 1;
+static float value_motor_f = 5.0;
 
 static int value_steering_pre = 5;
 static int value_motor_pre = 5;
+static int value_brake_pre = 0;
 static int value_rotation_pre;
 
 int control_init(void)
@@ -112,7 +118,10 @@ void control_main()
 			if(value_steering_pre != value_steering)
 				set_steering(value_steering);
 			if(value_motor_pre != value_motor)
-				set_motor(value_motor);
+				set_motor(control_brake(value_motor));
+			// Just in case,
+			//if(value_brake == 1)
+			//	set_motor(5);
 			if(value_rotation_pre != value_rotation)
 				set_rotation(value_rotation);
 			count = 0;
@@ -155,12 +164,51 @@ void set_motor(int val)
 	{
 		// min duty cycle for steering
 		mcpwm_set_signal_low(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B);
+		mcpwm_set_signal_low(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A);
 		mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, 0.1);
 		mcpwm_set_duty_type(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, MCPWM_DUTY_MODE_0);
 	}
 #ifdef DEBUG
 	ESP_LOGI(LOG, "Motor : %d / %f\n", val,duty_cycle);
 #endif
+}
+
+
+int control_brake(int val_motor)
+{
+	if ( value_brake == 1 )
+	{
+		value_motor_f = 0;
+		if ( value_brake_pre != value_brake )
+		{
+			if ( value_motor > 7 )
+			{
+				value_motor = 6;
+				return 1;
+			}
+			else if ( value_motor > 5 )
+			{
+				value_motor = 5;
+				return 3;
+			}
+			else if ( value_motor < 3 )
+			{
+				value_motor = 4;
+				return 9;
+			}
+			else if ( value_motor < 5 )
+			{
+				value_motor = 5;
+				return 7;
+			}
+		}
+		value_motor = 5;
+		return 5;
+	}
+	else
+	{
+		return val_motor;
+	}
 }
 
 void set_rotation(int val)
@@ -187,4 +235,59 @@ void set_value_motor(int val)
 void set_value_rotation(int val)
 {
 	value_rotation = val;
+}
+
+//Joy stick
+void set_value_joy_motor(int val)
+{
+	// If no acceleration then reduce speed
+	if( val == 0 )
+	{
+		value_motor_f = value_motor_f - 0.3;
+	}
+	else
+	{
+		if( value_motor_f + (float)(val/2) >= MAX_DRV )
+			value_motor_f = MAX_DRV;
+		else
+			value_motor_f = value_motor_f + (float)(val/2);
+	}
+
+	if ( value_motor_f <= 0.0 )
+		value_motor_f = 0.0;
+
+	if ( value_forward == 2 )
+	{
+		value_motor = -1*(int)(value_motor_f) + 5;
+	}
+	else if ( value_forward == 1 )
+	{
+		value_motor = (int)(value_motor_f) + 5;
+	}
+	else
+	{
+		value_motor = 5;
+	}
+
+#ifdef DEBUG
+	ESP_LOGI(LOG,"value_motor : %f / %d\n", value_motor_f, value_motor);
+#endif
+}
+
+void set_value_joy_brake(int val)
+{
+	value_brake_pre = value_brake;
+	value_brake = val;
+}
+
+void set_value_joy_steering(int val)
+{
+	// temporary implementation
+	value_steering = val;
+}
+
+void set_value_joy_gear(int val)
+{
+	// forward = 1 --> forward / forward = -1 --> backward
+	value_forward = val;
 }

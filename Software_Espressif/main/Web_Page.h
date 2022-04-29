@@ -299,3 +299,6 @@ document.addEventListener(\"DOMContentLoaded\", function(){ Dist_Rep(); });\
 <div align=center><h5>Current Accelerator : <span id=\"Acc\"></span> / Current Steering : <span id=\"Str\"></span></h5></div>\
 </body>";
 
+const char* Phone_JoyControl_Html = "\
+<html>\
+</html>";

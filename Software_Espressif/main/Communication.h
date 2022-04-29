@@ -17,6 +17,7 @@ int get_main(httpd_req_t *req);
 int get_phone(httpd_req_t *req);
 int get_joy(httpd_req_t *req);
 int get_key(httpd_req_t *req);
+int get_joyControl(httpd_req_t *req);
 
 int Com_server_uri();
 void Com_start_server();
@@ -24,5 +25,8 @@ int charToInt(char *buf, int limit);
 
 int Com_server_uri_stream();
 void Com_start_server_stream();
+
+void rf433_init();
+void Com_rf433_receive(void* pvParameter);
 
 #endif /* MAIN_COMMUNICATION_H_ */
