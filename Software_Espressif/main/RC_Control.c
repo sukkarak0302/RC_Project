@@ -119,9 +119,6 @@ void control_main()
 				set_steering(value_steering);
 			if(value_motor_pre != value_motor)
 				set_motor(control_brake(value_motor));
-			// Just in case,
-			//if(value_brake == 1)
-			//	set_motor(5);
 			if(value_rotation_pre != value_rotation)
 				set_rotation(value_rotation);
 			count = 0;

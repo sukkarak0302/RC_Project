@@ -266,6 +266,8 @@ int get_key(httpd_req_t *req)
 
 int get_joy(httpd_req_t *req)
 {
+	httpd_resp_send_chunk(req, Phone_JoyControl_Html, strlen(Phone_JoyControl_Html));
+	httpd_resp_send_chunk(req, NULL, 0);
 	return 0;
 }
 

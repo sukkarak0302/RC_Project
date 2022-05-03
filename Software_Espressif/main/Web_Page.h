@@ -301,4 +301,17 @@ document.addEventListener(\"DOMContentLoaded\", function(){ Dist_Rep(); });\
 
 const char* Phone_JoyControl_Html = "\
 <html>\
+<body style=\"background-color:black\">\
+<table border =0 width = \"100%\">\
+<tr>\
+<td>\
+<img src=\"http://192.168.4.1:81/streaming\" width=480 height=400/>\
+</td>\
+<td>\
+<img src=\"http://192.168.4.1:81/streaming\" width=480 height=400/>\
+</td>\
+</tr>\
+</table>\
+<div align=center><h5>Current Accelerator : <span id=\"Acc\"></span> / Current Steering : <span id=\"Str\"></span></h5></div>\
+</body>\
 </html>";
