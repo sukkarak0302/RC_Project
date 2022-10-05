@@ -144,6 +144,7 @@ void camera_release()
 
 uint8_t * get_frame()
 {
+	camera_capture();
 	return fb->buf;
 }
 
