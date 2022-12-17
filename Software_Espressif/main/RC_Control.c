@@ -27,10 +27,28 @@
 #define CHANNEL_DRIVING1 2
 #define CHANNEL_DRIVING2 3
 
-#define GPIO_STEERING 15
+// PINMAP Configuration
+/*
+ * 5v  : x          | x          : 3.3v
+ * GND : x          | STEERING   : GPIO16
+ * G12 : LED_REAR   | x          : G00
+ * G13 : ROTATION   | x          : GND
+ * G15 : LED_BRAKE  | x          : VCC
+ * G14 : DRIVING2   | LED_L_TURN : G03
+ * G02 : DRIVING1   | LED_R_TURN : G01
+ * G04 : LED_FRONT  | x          : GND
+ */
+
+#define GPIO_STEERING 16
 #define GPIO_ROTATION 13
 #define GPIO_DRIVING1 2
 #define GPIO_DRIVING2 14
+
+#define GPIO_LED_L_TURN 3
+#define GPIO_LED_R_TURN 1
+#define GPIO_LED_BRAKE GPIO_NUM_15
+#define GPIO_LED_FRONT GPIO_NUM_4
+#define GPIO_LED_REAR GPIO_NUM_12
 
 #define TOTAL_CHANNEL 4
 
@@ -45,6 +63,8 @@ static int value_motor = 5;
 static int value_rotation;
 static int value_brake = 0;
 static int value_forward = 1;
+static int value_light_front = 0; // 0 - Always off, 1 - always on
+static int value_light_turnsig = 0; // 0 - Off , 1 - left, 2 - right, 3 - both
 static float value_motor_f = 5.0;
 
 static int value_steering_pre = 5;
@@ -60,6 +80,8 @@ int control_init(void)
 
 	mcpwm_gpio_init(MCPWM_UNIT_1, MCPWM0A, GPIO_STEERING);
 	//mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM2A, GPIO_ROTATION);
+
+
 
 	mcpwm_config_t Motor_config =
 	{
@@ -89,21 +111,52 @@ int control_init(void)
 
 	gpio_config_t flash_config =
 	{
-			.intr_type = GPIO_INTR_DISABLE,
-			.mode = GPIO_MODE_OUTPUT,
-			.pin_bit_mask = (GPIO_SEL_4),
-			.pull_down_en = 0,
-			.pull_up_en = 0
+		.intr_type = GPIO_INTR_DISABLE,
+		.mode = GPIO_MODE_OUTPUT,
+		.pin_bit_mask = (GPIO_SEL_4),
+		.pull_down_en = 0,
+		.pull_up_en = 0
+	};
+
+	// LED Flash light configuration
+	gpio_config_t Led_front =
+	{
+		.intr_type = GPIO_INTR_DISABLE,
+		.mode = GPIO_MODE_OUTPUT,
+		.pin_bit_mask = (GPIO_LED_FRONT),
+		.pull_down_en = 1,
+		.pull_up_en = 0
+	};
+	gpio_config_t Led_rear =
+	{
+		.intr_type = GPIO_INTR_DISABLE,
+		.mode = GPIO_MODE_OUTPUT,
+		.pin_bit_mask = (GPIO_LED_REAR),
+		.pull_down_en = 1,
+		.pull_up_en = 0
+	};
+	gpio_config_t Led_brake =
+	{
+		.intr_type = GPIO_INTR_DISABLE,
+		.mode = GPIO_MODE_OUTPUT,
+		.pin_bit_mask = (GPIO_LED_BRAKE),
+		.pull_down_en = 1,
+		.pull_up_en = 0
 	};
 
 	mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &Motor_config);
 	mcpwm_init(MCPWM_UNIT_1, MCPWM_TIMER_0, &Steering_config);
 	//mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_2, &Rotation_config);
 
+	gpio_config(&Led_front);
+	gpio_config(&Led_rear);
+	gpio_config(&Led_brake);
+	gpio_set_level(GPIO_LED_FRONT,0);
+	gpio_set_level(GPIO_LED_REAR,0);
+	gpio_set_level(GPIO_LED_BRAKE,0);
+
 	gpio_config(&flash_config);
 	gpio_set_level(4,1);
-
-
 
 	return 1;
 }
@@ -128,6 +181,15 @@ void control_main()
 			count = count + 1;
 			vTaskDelay(10);
 		}
+
+		// Immediate brake enable
+		if(value_brake == 1)
+		{
+			set_motor(5);
+		}
+
+		//Set LED light
+		set_light();
 	}
 }
 
@@ -176,6 +238,7 @@ int control_brake(int val_motor)
 	if ( value_brake == 1 )
 	{
 		value_motor_f = 0;
+		/* SLOW DECELERATION DISABLED
 		if ( value_brake_pre != value_brake )
 		{
 			if ( value_motor > 7 )
@@ -199,6 +262,7 @@ int control_brake(int val_motor)
 				return 7;
 			}
 		}
+		*/
 		value_motor = 5;
 		return 5;
 	}
@@ -211,6 +275,39 @@ int control_brake(int val_motor)
 void set_rotation(int val)
 {
 	// Not yet implemented
+}
+
+void set_light()
+{
+	// Brake light switch - if the car stationed or brake is pressed
+	if(value_motor == 5 || value_brake == 1)
+	{
+		gpio_set_level(GPIO_LED_BRAKE,1);
+	}
+	else
+	{
+		gpio_set_level(GPIO_LED_BRAKE,0);
+	}
+
+	// Forward light switch
+	if( value_light_front == 1 )
+	{
+		gpio_set_level(GPIO_LED_FRONT,1);
+	}
+	else
+	{
+		gpio_set_level(GPIO_LED_FRONT,0);
+	}
+
+	// Rear light switch
+	if( value_motor < 5 || value_forward == 2 )
+	{
+		gpio_set_level(GPIO_LED_REAR,1);
+	}
+	else
+	{
+		gpio_set_level(GPIO_LED_REAR,0);
+	}
 }
 
 //Helper function
@@ -244,6 +341,7 @@ void set_value_joy_motor(int val)
 	}
 	else
 	{
+		// Gradual increase of speed
 		if( value_motor_f + (float)(val/2) >= MAX_DRV )
 			value_motor_f = MAX_DRV;
 		else
@@ -253,14 +351,17 @@ void set_value_joy_motor(int val)
 	if ( value_motor_f <= 0.0 )
 		value_motor_f = 0.0;
 
+	// Backward
 	if ( value_forward == 2 )
 	{
 		value_motor = -1*(int)(value_motor_f) + 5;
 	}
+	// Forward
 	else if ( value_forward == 1 )
 	{
 		value_motor = (int)(value_motor_f) + 5;
 	}
+	// Neutral, just stop
 	else
 	{
 		value_motor = 5;
@@ -287,4 +388,16 @@ void set_value_joy_gear(int val)
 {
 	// forward = 1 --> forward / forward = -1 --> backward
 	value_forward = val;
+}
+
+// Set front light
+void set_value_led(int val)
+{
+	value_light_front = val;
+}
+
+// Set turn signal lamp
+void set_value_turnsignal(int val)
+{
+	value_light_turnsig = val;
 }
