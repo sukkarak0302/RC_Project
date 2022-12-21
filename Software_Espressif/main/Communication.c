@@ -216,19 +216,19 @@ int get_phone(httpd_req_t *req)
 #endif
    			}
 
-   			if ( httpd_query_key_value(qur, "SIG", control, sizeof(control)) == ESP_OK )
+   			if ( httpd_query_key_value(qur, "LIG", control, sizeof(control)) == ESP_OK )
    			{
    				set_value_led(charToInt(control,1));
 #ifdef DEBUG
-   				ESP_LOGI(LOG, "SIG : %d", charToInt(control,1));
+   				ESP_LOGI(LOG, "LIG : %d", charToInt(control,1));
 #endif
    			}
 
-   			if ( httpd_query_key_value(qur, "LIG", control, sizeof(control)) == ESP_OK )
+   			if ( httpd_query_key_value(qur, "SIG", control, sizeof(control)) == ESP_OK )
    			{
    				set_value_turnsignal(charToInt(control,1));
 #ifdef DEBUG
-   				ESP_LOGI(LOG, "LIG : %d", charToInt(control,1));
+   				ESP_LOGI(LOG, "SIG : %d", charToInt(control,1));
 #endif
    			}
 
