@@ -163,7 +163,7 @@ document.addEventListener(\"DOMContentLoaded\", function(){ Dist_Rep(); });\
 <font color = red>¡ã<br>F<br>W<br>¡ã<br>¡ã</font><br><font color = blue> <br>¡å<br>¡å<br>B<br>W<br>¡å</font>\
 </td>\
 <td>\
-<div align = center><img src=\"http://192.168.4.1:81/streaming\" width=320 height=240/></div>\
+<div align = center><img src=\"http://192.168.4.1:81/streaming\" width=480 height=480 style=\"transform:rotate(-90deg);\"/></div>\
 </td>\
 <td width = 100 id = \"STR_Color\" style = \"background-color:#FFFFFF;\">\
 <div align = \"center\"><input type=\"range\" name=\"slider\" value=\"5\" min=\"1\" max=\"9\" id=\"Steering\" oninput=\"Func_Str_Bar()\" orient=\"horizontal\"></div>\
@@ -289,10 +289,10 @@ document.addEventListener(\"DOMContentLoaded\", function(){ Dist_Rep(); });\
 <table border =0 width = \"100%\">\
 <tr>\
 <td>\
-<img src=\"http://192.168.4.1:81/streaming\" width=480 height=320/>\
+<img src=\"http://192.168.4.1:81/streaming\" width=480 height=320 style=\"transform:rotate(-90deg);\"/>\
 </td>\
 <td>\
-<img src=\"http://192.168.4.1:81/streaming\" width=480 height=320/>\
+<img src=\"http://192.168.4.1:81/streaming\" width=480 height=320 style=\"transform:rotate(-90deg);\"/>\
 </td>\
 </tr>\
 </table>\
@@ -305,10 +305,10 @@ const char* Phone_JoyControl_Html = "\
 <table border =0 width = \"100%\">\
 <tr>\
 <td>\
-<img src=\"http://192.168.4.1:81/streaming\" width=480 height=400/>\
+<img src=\"http://192.168.4.1:81/streaming\" width=480 height=400 style=\"transform:rotate(-90deg);\"/>\
 </td>\
 <td>\
-<img src=\"http://192.168.4.1:81/streaming\" width=480 height=400/>\
+<img src=\"http://192.168.4.1:81/streaming\" width=480 height=400 style=\"transform:rotate(-90deg);\"/>\
 </td>\
 </tr>\
 </table>\
