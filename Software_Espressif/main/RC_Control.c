@@ -101,7 +101,7 @@ int control_init(void)
 	//mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_2, &Rotation_config);
 
 	gpio_config(&flash_config);
-	gpio_set_level(4,1);
+	gpio_set_level(4,0);
 
 
 
