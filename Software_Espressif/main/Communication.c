@@ -215,6 +215,22 @@ int get_phone(httpd_req_t *req)
    				ESP_LOGI(LOG, "STR : %d", charToInt(control,1));
 #endif
    			}
+
+   			if ( httpd_query_key_value(qur, "FLA", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_flash(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "FLA : %d", charToInt(control,1));
+#endif
+   			}
+
+   			if ( httpd_query_key_value(qur, "ROT_EN", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_rotation_enable(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "ROT_EN : %d", charToInt(control,1));
+#endif
+   			}
 		}
 	}
 
@@ -256,6 +272,14 @@ int get_key(httpd_req_t *req)
    				set_value_steering(charToInt(control,1));
 #ifdef DEBUG
    				ESP_LOGI(LOG, "STR : %d", charToInt(control,1));
+#endif
+   			}
+
+   			if ( httpd_query_key_value(qur, "FLA", control, sizeof(control)) == ESP_OK )
+   			{
+   				set_value_flash(charToInt(control,1));
+#ifdef DEBUG
+   				ESP_LOGI(LOG, "FLA : %d", charToInt(control,1));
 #endif
    			}
 		}
