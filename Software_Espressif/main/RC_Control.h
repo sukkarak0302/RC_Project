@@ -22,6 +22,8 @@ static uint32_t servo_per_degree_init(uint32_t degree_of_rotation);
 void set_value_steering(int val);
 void set_value_motor(int val);
 void set_value_rotation(int val);
+void set_value_flash(int val);
+void set_value_rotation_enable(int val);
 
 int control_brake(int val_motor);
 

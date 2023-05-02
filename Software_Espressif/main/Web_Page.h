@@ -45,7 +45,9 @@ input[type=range][orient=horizontal] {\
 var url = location.href;\
 var ACCVal = 5;\
 var STRVal = 5;\
+var FlashVal = 0;\
 var DISTVal = 0;\
+var ROTENVal = 0;\
 \
 function Init(){\
   document.getElementById(\"Acc\").innerHTML = ACCVal;\
@@ -53,21 +55,33 @@ function Init(){\
 }\
 function Func_Acc_Bar(){\
   ACCVal = document.getElementById(\"Accelerator\").value;\
-  Func_Output(ACCVal, STRVal);\
+  Func_Output(ACCVal, STRVal, FlashVal, ROTENVal);\
 }\
 \
 function Func_Str_Bar(){\
   STRVal = document.getElementById(\"Steering\").value;\
-  Func_Output(ACCVal, STRVal);\
+  Func_Output(ACCVal, STRVal, FlashVal, ROTENVal);\
 }\
 \
+function Func_Flash(){\
+  \
+  if(FlashVal == 0) { FlashVal = 1; } \
+  else { FlashVal = 0; } \
+  Func_Output(ACCVal, STRVal, FlashVal, ROTENVal);\
+}\
 \
-function Func_Output(ACC, STR){\
+function Func_RotateActivation(){ \
+  if(ROTENVal == 0) { ROTENVal = 1;} \
+  else { ROTENVal = 0; } \
+  Func_Output(ACCVal, STRVal, FlashVal, ROTENVal);\
+}\
+\
+function Func_Output(ACC, STR, FLA, ROT_EN){\
   var xhttp = new XMLHttpRequest();\
   document.getElementById(\"Acc\").innerHTML = ACC;\
   document.getElementById(\"Str\").innerHTML = STR;\
   Func_Color(ACC,STR);\
-  var url2 = url + \"?ACC=\" + ACC + \"&STR=\" + STR;\
+  var url2 = url + \"?ACC=\" + ACC + \"&STR=\" + STR + \"&FLA=\" + FLA + \"&ROT_EN=\" + ROT_EN;\
   console.log(url2);\
   xhttp.open(\"GET\", url2, true);\
   xhttp.send();\
@@ -178,6 +192,16 @@ document.addEventListener(\"DOMContentLoaded\", function(){ Dist_Rep(); });\
 </td>\
 <td>\
 <font color = blue>¢¸LEFT¢¸¢¸¢¸¢¸</font><font color = red> ¢º¢º¢º¢ºRIGHT¢º</font>\
+</td>\
+</tr>\
+<tr>\
+<td>\
+</td>\
+<td>\
+<button type=\"button\" onclick=\"Func_Flash()\">FLASH</button>\
+<button type=\"button\" onclick=\"Func_RotateActivation()\">ROT_ACTIVATION</button>\
+</td>\
+<td>\
 </td>\
 </tr>\
 </table>\

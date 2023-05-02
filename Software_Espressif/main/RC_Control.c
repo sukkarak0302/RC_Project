@@ -33,6 +33,7 @@
 #define GPIO_ROTATION 15
 #define GPIO_DRIVING1 2
 #define GPIO_DRIVING2 14
+#define GPIO_FLASH 4
 
 #define TOTAL_CHANNEL 4
 
@@ -61,6 +62,8 @@ static int value_steering_pre = 5;
 static int value_motor_pre = 5;
 static int value_brake_pre = 0;
 static int value_rotation_pre;
+static int value_flash = 0;
+static int value_rotation_enable = 0;
 
 int control_init(void)
 {
@@ -134,9 +137,7 @@ int control_init(void)
 	//mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_2, &Rotation_config);
 
 	gpio_config(&flash_config);
-	gpio_set_level(4,0);
-
-
+	gpio_set_level(GPIO_FLASH,value_flash);
 
 	return 1;
 }
@@ -172,9 +173,11 @@ void set_steering(int val)
 #ifdef DEBUG
 	ESP_LOGI(LOG, "Str : %d / dut : %d \n", val, active_time);
 #endif
-	uint32_t active_pwm = (uint32_t)(((float)(9-val)/10.0 + 1.0)*1024.0/20.0);
-	ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, active_pwm));
-	ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+	if(value_rotation_enable == 1){
+		uint32_t active_pwm = (uint32_t)(((float)(9-val)/10.0 + 1.0)*1024.0/20.0);
+		ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, active_pwm));
+		ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+	}
 
 }
 
@@ -269,6 +272,19 @@ void set_value_motor(int val)
 void set_value_rotation(int val)
 {
 	value_rotation = val;
+}
+
+void set_value_flash(int val)
+{
+	if(value_flash != val)
+		gpio_set_level(GPIO_FLASH, value_flash);
+	value_flash = val;
+
+}
+
+void set_value_rotation_enable(int val)
+{
+	value_rotation_enable = val;
 }
 
 //Joy stick
