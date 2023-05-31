@@ -132,8 +132,6 @@ void Com_nrf24_init()
         //.address_bits=0,
         //.dummy_bits=0,
         .clock_speed_hz=10*1000*1000,
-		//.input_delay_ns=1000,
-        //.duty_cycle_pos=128,        //50% duty cycle
         .mode=0,
         .spics_io_num=GPIO_CS,
 		.flags = SPI_DEVICE_HALFDUPLEX,
@@ -148,11 +146,24 @@ void Com_nrf24_init()
     assert(ret==ESP_OK);
 
 
-
+/*
     Com_nrf24_writeReg(3,0x03, 1); // EN_RXADDR, choosing 5 bit tx/rx address
     Com_nrf24_writeReg(6,0x0E, 1); // SETUP_AW
     Com_nrf24_writeReg(5,0x00, 1); // RF_CH
     Com_nrf24_writeReg(6,0x0E, 1); // RF_SETUP power = 0dB
+*/
+    uint8_t dat = 0;
+    Com_nrf24_writeReg(CONFIG, &dat, 1);  // will be configured later
+    Com_nrf24_writeReg(EN_AA, &dat, 1);  // No Auto ACK
+    Com_nrf24_writeReg(EN_RXADDR, &dat, 1);  // Not Enabling any data pipe right now
+    Com_nrf24_writeReg(SETUP_RETR, &dat, 1);   // No retransmission
+    Com_nrf24_writeReg(RF_CH, &dat, 1);  // will be setup during Tx or RX
+
+    dat = 0x03;
+    Com_nrf24_writeReg(SETUP_AW, &dat, 1);  // 5 Bytes for the TX/RX address
+    dat= 0x0E;
+	Com_nrf24_writeReg(RF_SETUP, &dat, 1);   // Power= 0db, data rate = 2Mbps
+
     /*
     uint8_t cmd = 0x20;
 	Com_nrf24_cmd(spi, cmd, NULL, true); // W_REGISTER
@@ -160,7 +171,8 @@ void Com_nrf24_init()
 	cmd = 0x0B;
 	Com_nrf24_cmd(spi, 0b00001011, NULL, true); // initializing
 	ESP_LOGI(LOG, "RF Initialized");
-*/
+    */
+
 #ifdef DEBUG
 		ESP_LOGI(LOG, "spi cofig done\n");
 #endif
@@ -174,29 +186,31 @@ void Com_nrf24_writeReg(uint8_t reg, uint8_t* data, uint8_t size)
 uint8_t Com_nrf24_readReg(uint8_t reg)
 {
 	uint8_t data=0;
-	uint8_t buf[2] = {0,0};
-	buf[0] = reg;
-
-	//Com_nrf24_cmd(spi, buf, &data, 1);
+	uint8_t cmd=0;
+	cmd = cmd | reg;
+	Com_nrf24_rx_cmd(spi, cmd, &data, 1, 1);
 
 	return data;
 }
 
-void Com_nrf24_RxMode(uint8_t *address, uint8_t channel)
+void Com_nrf24_RxMode()
 {
-	Com_nrf24_writeReg(RF_CH, channel, 1); // selecting the channel
-
-	Com_nrf24_writeReg(EN_RXADDR, 0x02, 1); // select data pipe1
+	uint8_t dat = 10;
+	Com_nrf24_writeReg(RF_CH, &dat, 1); // selecting the channel
+	dat = 0x02;
+	Com_nrf24_writeReg(EN_RXADDR, &dat, 1); // select data pipe1
 
 	Com_nrf24_writeReg(RX_ADDR_P1, address, 5); // Writing the pipe1 address
+	dat = 0xEE;
+	Com_nrf24_writeReg(RX_ADDR_P2, &dat, 1); // 32 bit payload size for pipe1
+	dat = 32;
+	Com_nrf24_writeReg(RX_PW_P2, &dat, 1); // 32 bit payload size for pipe1
 
-	Com_nrf24_writeReg(RX_ADDR_P2, 0xEE, 1); // 32 bit payload size for pipe1
-
-	Com_nrf24_writeReg(RX_PW_P2, 32, 1); // 32 bit payload size for pipe1
-
-	uint8_t config = Com_nrf24_readReg(CONFIG);
+	uint8_t config = Com_nrf24_readReg(RF_CH);
+	ESP_LOGI(LOG, "read reg test : %d \n", config);
 	config = config | (1<<1) | (1<<0);
-	Com_nrf24_writeReg(CONFIG, config, 1);
+	Com_nrf24_writeReg(CONFIG, &config, 1);
+
 
 }
 
@@ -206,6 +220,8 @@ void Com_nrf24_readBuffer(uint8_t *data)
 
 	cmdtosend = R_RX_PAYLOAD;
 
+	//Com_nrf24_rx_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* rcv_buffer, uint8_t rx_len, bool keep_cs_active)
+	Com_nrf24_rx_cmd(spi, cmdtosend, data, 1, 1);
 	//Com_nrf24_cmd(spi, &cmdtosend, data, 1);
 
 }
@@ -216,7 +232,7 @@ uint8_t Com_nrf24_dataAvailable(int pipenum)
 
 	if ((status&(1<<6)) && (status&(pipenum<<1)))
 	{
-		Com_nrf24_writeReg(STATUS, status, 1);
+		Com_nrf24_writeReg(STATUS, (1<<6), 1);
 
 		return 1;
 	}
@@ -228,7 +244,7 @@ void Com_nrf24_main()
 	uint8_t buf_len = 4;
 	uint8_t recv_buffer[buf_len];
 
-    Com_nrf24_RxMode(address, 10);
+    Com_nrf24_RxMode();
 
 	while(1)
 	{
@@ -244,40 +260,63 @@ void Com_nrf24_main()
 
 }
 
-void Com_nrf24_rx_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* rcv_buffer, uint8_t tx_len, bool keep_cs_active)
+void Com_nrf24_rx_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* rcv_buffer, uint8_t rx_len, bool keep_cs_active)
 {
 	esp_err_t ret;
 	spi_transaction_t t = {
-	    .flags = SPI_TRANS_MODE_DIO,
 		.cmd = cmd,
-		.length = 8,
-		.rxlength = 8,
-		.length = 8*tx_len,
-		.flags = 1
+		.length = 8*rx_len,
+		.rxlength = 8*rx_len,
 	};
+
+	if(rx_len > 4) {
+		t.rx_buffer = rcv_buffer;
+	}
+	else {
+		t.tx_data[0] = cmd;
+		t.flags = SPI_TRANS_USE_RXDATA | SPI_TRANS_USE_TXDATA;
+	}
+
+    t.user=(void*)0;                //D/C needs to be set to 0
+	spi_device_transmit(spi, &t);
+	ESP_LOGI(LOG, "cmd tx : %d, cmd rx : ", cmd);
+	if(rx_len > 4) {
+		for(int i = 0; i < rx_len; i++) {
+			ESP_LOGI(LOG, "%d / ", rcv_buffer[i]);
+		}
+	}
+	else {
+		//for(int i = 0; i < 4; i++) {
+		ESP_LOGI(LOG, "%d / %d / %d / %d", t.rx_data[0], t.rx_data[1], t.rx_data[2], t.rx_data[3]);
+		//}
+	}
+	//ESP_LOGI(LOG, "\n");
+
+    assert(ret==ESP_OK);            //Should have had no issues.
 }
 
-void Com_nrf24_cmd(spi_device_handle_t spi, const uint8_t* cmd, uint8_t* send_buf, uint8_t size, bool keep_cs_active)
+void Com_nrf24_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* send_buf, uint8_t size, bool keep_cs_active)
 {
     esp_err_t ret;
     spi_transaction_t t = {
-    	.flags = SPI_TRANS_MODE_DIO,
-		.cmd = cmd,
+		.cmd = (uint16_t)(cmd),
 		.length = 8 * size,
-		.flags = 1
+		.rxlength = 8 * size,
+		.rx_buffer = NULL
     };
 
-    if(size != 0) {
+    if(size > 1) {
+    	t.flags = SPI_TRANS_USE_RXDATA;
     	t.tx_buffer=send_buf;
+    }
+    else {
+    	t.flags = SPI_TRANS_USE_RXDATA | SPI_TRANS_USE_TXDATA;
+    	t.tx_data[0] = send_buf[0];
     }
 
     t.user=(void*)0;                //D/C needs to be set to 0
-    //if (keep_cs_active) {
-    //  t.flags = 1;   //Keep CS active after data transfer
-    //}
 	spi_device_transmit(spi, &t);
-	//*rcv_buffer = t.rx_data[0];
-	ESP_LOGI(LOG, "cmd rx : %d /n", t.rx_data[0]);
+	ESP_LOGI(LOG, "cmd tx : %d, %d / rx : %d, %d, %d, %d", cmd, t.tx_data[0], t.rx_data[0], t.rx_data[1], t.rx_data[2], t.rx_data[3]);
     assert(ret==ESP_OK);            //Should have had no issues.
 }
 

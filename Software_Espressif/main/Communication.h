@@ -41,10 +41,11 @@ void Com_nrf24_init();
 void Com_nrf24_main();
 void Com_nrf24_receive(void* pvParameter);
 void Com_nrf24_read(uint8_t * buf, uint8_t len);
-void Com_nrf24_cmd(spi_device_handle_t spi, const uint8_t* cmd, uint8_t* send_buf, uint8_t size, bool keep_cs_active);
+void Com_nrf24_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* send_buf, uint8_t size, bool keep_cs_active);
+void Com_nrf24_rx_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* rcv_buffer, uint8_t rx_len, bool keep_cs_active);
 void Com_nrf24_writeReg(uint8_t reg, uint8_t* data, uint8_t size);
 uint8_t Com_nrf24_readReg(uint8_t reg);
-void Com_nrf24_RxMode(uint8_t *address, uint8_t channel);
+void Com_nrf24_RxMode();
 void Com_nrf24_readBuffer(uint8_t *data);
 uint8_t Com_nrf24_dataAvailable(int pipenum);
 
