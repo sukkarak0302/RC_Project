@@ -25,6 +25,7 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 
+
 #define ESP_WIFI_CHANNEL 1
 #define ESP_MAX_STA_CONN 2
 
@@ -37,10 +38,14 @@ static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" 
 static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
+uint8_t address[] = {0x00, 0x00, 0x00, 0x00, 0x01};
+
 /* Empty handle to esp_http_server */
 static httpd_handle_t server = NULL;
 
 static QueueHandle_t uart2_queue;
+
+static spi_device_handle_t spi;
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -98,6 +103,8 @@ int Com_init()
 		}
 	}
 
+	Com_nrf24_init();
+
 
 #ifdef DEBUG
 	if (ret_val == 0) ESP_LOGI(LOG, "Wifi Init successful!");
@@ -107,22 +114,226 @@ int Com_init()
 	return ret_val;
 }
 
-void rf433_init()
+void Com_nrf24_init()
 {
-	uart_config_t uart_config = {
-	        .baud_rate = 2400,
-	        .data_bits = UART_DATA_8_BITS,
-	        .parity    = UART_PARITY_DISABLE,
-	        .stop_bits = UART_STOP_BITS_1,
-	        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+	esp_err_t ret;
+	spi_bus_config_t buscfg={
+        .mosi_io_num=GPIO_MOSI,
+        .miso_io_num=GPIO_MISO,
+        .sclk_io_num=GPIO_SCLK,
+        .quadwp_io_num=-1,
+        .quadhd_io_num=-1,
+		.max_transfer_sz = 32
+    };
+
+	//Configuration for the SPI device on the other side of the bus
+    spi_device_interface_config_t devcfg={
+        .command_bits=8,
+        //.address_bits=0,
+        //.dummy_bits=0,
+        .clock_speed_hz=10*1000*1000,
+        .mode=0,
+        .spics_io_num=GPIO_CS,
+		.flags = SPI_DEVICE_HALFDUPLEX,
+		.pre_cb=NULL,  //Specify pre-transfer callback to handle D/C line
+        //.cs_ena_posttrans=3,        //Keep the CS low 3 cycles after transaction, to stop slave from missing the last bit when CS has less propagation delay than CLK
+        .queue_size=4
+    };
+
+	ret=spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_DISABLED);
+    assert(ret==ESP_OK);
+    ret=spi_bus_add_device(SPI2_HOST, &devcfg, &spi);
+    assert(ret==ESP_OK);
+
+
+/*
+    Com_nrf24_writeReg(3,0x03, 1); // EN_RXADDR, choosing 5 bit tx/rx address
+    Com_nrf24_writeReg(6,0x0E, 1); // SETUP_AW
+    Com_nrf24_writeReg(5,0x00, 1); // RF_CH
+    Com_nrf24_writeReg(6,0x0E, 1); // RF_SETUP power = 0dB
+*/
+    uint8_t dat = 0;
+    Com_nrf24_writeReg(CONFIG, &dat, 1);  // will be configured later
+    Com_nrf24_writeReg(EN_AA, &dat, 1);  // No Auto ACK
+    Com_nrf24_writeReg(EN_RXADDR, &dat, 1);  // Not Enabling any data pipe right now
+    Com_nrf24_writeReg(SETUP_RETR, &dat, 1);   // No retransmission
+    Com_nrf24_writeReg(RF_CH, &dat, 1);  // will be setup during Tx or RX
+
+    dat = 0x03;
+    Com_nrf24_writeReg(SETUP_AW, &dat, 1);  // 5 Bytes for the TX/RX address
+    dat= 0x0E;
+	Com_nrf24_writeReg(RF_SETUP, &dat, 1);   // Power= 0db, data rate = 2Mbps
+
+    /*
+    uint8_t cmd = 0x20;
+	Com_nrf24_cmd(spi, cmd, NULL, true); // W_REGISTER
+	ESP_LOGI(LOG, "W_Register sent");
+	cmd = 0x0B;
+	Com_nrf24_cmd(spi, 0b00001011, NULL, true); // initializing
+	ESP_LOGI(LOG, "RF Initialized");
+    */
+
+#ifdef DEBUG
+		ESP_LOGI(LOG, "spi cofig done\n");
+#endif
+}
+
+void Com_nrf24_writeReg(uint8_t reg, uint8_t* data, uint8_t size)
+{
+	Com_nrf24_cmd(spi, (reg|1<<5), data, size, 1);
+}
+
+uint8_t Com_nrf24_readReg(uint8_t reg)
+{
+	uint8_t data=0;
+	uint8_t cmd=0;
+	cmd = cmd | reg;
+	Com_nrf24_rx_cmd(spi, cmd, &data, 1, 1);
+
+	return data;
+}
+
+void Com_nrf24_RxMode()
+{
+	uint8_t dat = 10;
+	Com_nrf24_writeReg(RF_CH, &dat, 1); // selecting the channel
+	dat = 0x02;
+	Com_nrf24_writeReg(EN_RXADDR, &dat, 1); // select data pipe1
+
+	Com_nrf24_writeReg(RX_ADDR_P1, address, 5); // Writing the pipe1 address
+	dat = 0xEE;
+	Com_nrf24_writeReg(RX_ADDR_P2, &dat, 1); // 32 bit payload size for pipe1
+	dat = 32;
+	Com_nrf24_writeReg(RX_PW_P2, &dat, 1); // 32 bit payload size for pipe1
+
+	uint8_t config = Com_nrf24_readReg(RF_CH);
+	ESP_LOGI(LOG, "read reg test : %d \n", config);
+	config = config | (1<<1) | (1<<0);
+	Com_nrf24_writeReg(CONFIG, &config, 1);
+
+
+}
+
+void Com_nrf24_readBuffer(uint8_t *data)
+{
+	uint8_t cmdtosend = 0;
+
+	cmdtosend = R_RX_PAYLOAD;
+
+	//Com_nrf24_rx_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* rcv_buffer, uint8_t rx_len, bool keep_cs_active)
+	Com_nrf24_rx_cmd(spi, cmdtosend, data, 1, 1);
+	//Com_nrf24_cmd(spi, &cmdtosend, data, 1);
+
+}
+
+uint8_t Com_nrf24_dataAvailable(int pipenum)
+{
+	uint8_t status = Com_nrf24_readReg(STATUS);
+
+	if ((status&(1<<6)) && (status&(pipenum<<1)))
+	{
+		Com_nrf24_writeReg(STATUS, (1<<6), 1);
+
+		return 1;
+	}
+	return 0;
+}
+
+void Com_nrf24_main()
+{
+	uint8_t buf_len = 4;
+	uint8_t recv_buffer[buf_len];
+
+    Com_nrf24_RxMode();
+
+	while(1)
+	{
+		if(Com_nrf24_dataAvailable(2) ==1)
+		{
+			Com_nrf24_readBuffer(recv_buffer);
+		}
+#ifdef DEBUG
+		//ESP_LOGI(LOG, "%d / %d / %d / %d\n", recv_buffer[0], recv_buffer[1], recv_buffer[2], recv_buffer[3]);
+#endif
+		vTaskDelay( 100/portTICK_RATE_MS );
+	}
+
+}
+
+void Com_nrf24_rx_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* rcv_buffer, uint8_t rx_len, bool keep_cs_active)
+{
+	esp_err_t ret;
+	spi_transaction_t t = {
+		.cmd = cmd,
+		.length = 8*rx_len,
+		.rxlength = 8*rx_len,
 	};
 
+	if(rx_len > 4) {
+		t.rx_buffer = rcv_buffer;
+	}
+	else {
+		t.tx_data[0] = cmd;
+		t.flags = SPI_TRANS_USE_RXDATA | SPI_TRANS_USE_TXDATA;
+	}
 
-    if(uart_param_config(UART_NUM_2, &uart_config))
-    	ESP_LOGE(LOG,"PARAM Failed");
-    uart_set_pin(UART_NUM_2, 0, 16, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    uart_driver_install(UART_NUM_2, BUF_SIZE*2, 0, 0, NULL, 0);
+    t.user=(void*)0;                //D/C needs to be set to 0
+	spi_device_transmit(spi, &t);
+	ESP_LOGI(LOG, "cmd tx : %d, cmd rx : ", cmd);
+	if(rx_len > 4) {
+		for(int i = 0; i < rx_len; i++) {
+			ESP_LOGI(LOG, "%d / ", rcv_buffer[i]);
+		}
+	}
+	else {
+		//for(int i = 0; i < 4; i++) {
+		ESP_LOGI(LOG, "%d / %d / %d / %d", t.rx_data[0], t.rx_data[1], t.rx_data[2], t.rx_data[3]);
+		//}
+	}
+	//ESP_LOGI(LOG, "\n");
 
+    assert(ret==ESP_OK);            //Should have had no issues.
+}
+
+void Com_nrf24_cmd(spi_device_handle_t spi, const uint8_t cmd, uint8_t* send_buf, uint8_t size, bool keep_cs_active)
+{
+    esp_err_t ret;
+    spi_transaction_t t = {
+		.cmd = (uint16_t)(cmd),
+		.length = 8 * size,
+		.rxlength = 8 * size,
+		.rx_buffer = NULL
+    };
+
+    if(size > 1) {
+    	t.flags = SPI_TRANS_USE_RXDATA;
+    	t.tx_buffer=send_buf;
+    }
+    else {
+    	t.flags = SPI_TRANS_USE_RXDATA | SPI_TRANS_USE_TXDATA;
+    	t.tx_data[0] = send_buf[0];
+    }
+
+    t.user=(void*)0;                //D/C needs to be set to 0
+	spi_device_transmit(spi, &t);
+	ESP_LOGI(LOG, "cmd tx : %d, %d / rx : %d, %d, %d, %d", cmd, t.tx_data[0], t.rx_data[0], t.rx_data[1], t.rx_data[2], t.rx_data[3]);
+    assert(ret==ESP_OK);            //Should have had no issues.
+}
+
+/*
+* nrf24 read command
+*/
+void Com_nrf24_read(uint8_t * buf, uint8_t len)
+{
+	int idx = 0;
+	//uint8_t recv_buffer[buf_len];
+	Com_nrf24_cmd(spi, 0x61, NULL, 0, true); 		// Read RX Buffer
+	while(idx < len) {
+		Com_nrf24_cmd(spi, 0xFF, NULL, 0, true);
+		buf++;
+		idx++;
+	}
+	Com_nrf24_cmd(spi, 0b11100010, NULL, 0, true); // Flush RX Buffer
 }
 
 int Com_stop()
@@ -146,29 +357,6 @@ int Com_stop()
 
 	return ret_val;
 }
-
-/* RF433 related
- *
- */
-void Com_rf433_receive(void* pvParameter)
-{
-    uart_event_t event;
-    size_t* buffered_size;
-    uint8_t* data = (uint8_t*) malloc(32+1);
-
-	while(1)
-	{
-		const int rxBytes = uart_read_bytes(UART_NUM_2, data, 32, 1000 / portTICK_RATE_MS);
-		if ( rxBytes > 0 )
-		{
-			data[rxBytes] = 0;
-			ESP_LOGI(LOG, "Read %d bytes: '%s'", rxBytes, data);
-			ESP_LOG_BUFFER_HEXDUMP(LOG, data, rxBytes, ESP_LOG_INFO);
-		}
-	}
-	free(data);
-}
-
 
 int get_main(httpd_req_t *req)
 {
